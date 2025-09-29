@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Спортивные площадки</title>
 
-<!-- Telegram WebApp SDK -->
+<!-- Telegram SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-<!-- Leaflet для карт -->
+<!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
@@ -22,19 +22,20 @@
   h1,h2 { text-align: center; }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit,minmax(120px,1fr));
+    grid-template-columns: repeat(auto-fit,minmax(150px,1fr));
     gap: 10px;
     padding: 10px;
   }
   .card {
-    background: #f0f0f0;
+    background: rgba(0,0,0,0.05);
     border-radius: 12px;
-    padding: 12px;
+    padding: 8px;
     text-align: center;
     cursor: pointer;
     transition: 0.2s;
+    color: var(--tg-theme-text-color, #000);
   }
-  .card:hover { background: #e0e0e0; }
+  .card:hover { background: rgba(0,0,0,0.1); }
   .back-btn {
     margin: 10px;
     padding: 8px 12px;
@@ -46,13 +47,39 @@
   }
   #map { height: 300px; margin: 10px; border-radius: 12px; }
   img.place-photo { max-width: 95%; display:block; margin: 10px auto; border-radius:12px; }
+
+  /* горизонтальная лента фото */
+  .photo-strip {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    padding: 10px;
+  }
+  .photo-strip img {
+    height: 120px;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+
+  /* полноэкранный просмотр */
+  .fullscreen-overlay {
+    position: fixed;
+    top:0; left:0; right:0; bottom:0;
+    background: rgba(0,0,0,0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+  }
+  .fullscreen-overlay img {
+    max-width: 90%;
+    max-height: 90%;
+  }
 </style>
 </head>
 <body>
 
-<div id="app">
-  <h1>Загрузка...</h1>
-</div>
+<div id="app"><h1>Загрузка...</h1></div>
 
 <script>
 const tg = window.Telegram.WebApp;
@@ -63,13 +90,12 @@ const app = document.getElementById('app');
 let currentCategory = null;
 let currentMap = null;
 
-// --- Иконки для категорий (пример, можно заменить картинками/emoji) ---
+// Иконки категорий (пример)
 const ICONS = {
   "футбол":"⚽","баскетбол":"🏀","волейбол":"🏐","бадминтон":"🏸","каток":"⛸",
   "теннис":"🎾","лыжи":"🎿","сноуборд":"🏂","воркаут":"💪","экстрим":"🤸"
 };
 
-// ---------- UI ----------
 function showLoading(text="Загрузка...") {
   app.innerHTML = `<h1>${text}</h1>`;
 }
@@ -78,12 +104,11 @@ function backButton(cb) {
   return `<button class="back-btn" onclick="(${cb})()">⬅ Назад</button>`;
 }
 
-// ---------- Страница категорий ----------
+// ---------- Категории ----------
 async function loadCategories() {
   showLoading();
   const res = await fetch(`${API_BASE}/categories/`);
   const data = await res.json();
-  // сортировка по имени
   data.sort((a,b)=>a.name.localeCompare(b.name,'ru'));
   let html = `<h1>Категории</h1><div class="grid">`;
   data.forEach(c=>{
@@ -94,7 +119,7 @@ async function loadCategories() {
   app.innerHTML = html;
 }
 
-// ---------- Список площадок + карта ----------
+// ---------- Список площадок ----------
 async function loadPlaces(slug,name) {
   currentCategory = {slug,name};
   showLoading();
@@ -102,20 +127,30 @@ async function loadPlaces(slug,name) {
   const places = await res.json();
 
   let html = `<h2>${name}</h2>${backButton('loadCategories')}`;
-  if (places.length === 0) {
+  if (!places.length) {
     html += `<p style="text-align:center">Площадок пока нет</p>`;
     app.innerHTML = html;
     return;
   }
 
   html += `<div class="grid">`;
-  places.forEach(p=>{
-    html += `<div class="card" onclick="loadPlace(${p.id})">📍<br>${p.name}</div>`;
-  });
+  for (const p of places) {
+    // Запросить детально для фото
+    let firstPhoto = "";
+    try {
+      const r = await fetch(`${API_BASE}/places/${p.id}/`);
+      const d = await r.json();
+      firstPhoto = d.first_photo || "";
+    } catch {}
+    html += `<div class="card" onclick="loadPlace(${p.id})">
+      ${firstPhoto ? `<img src="${firstPhoto}" style="width:100%;border-radius:8px;margin-bottom:6px">` : ""}
+      📍 ${p.name}
+    </div>`;
+  }
   html += `</div><div id="map"></div>`;
   app.innerHTML = html;
 
-  // Отрисовка карты с метками
+  // карта с маркерами
   setTimeout(()=>{
     if (currentMap) currentMap.remove();
     currentMap = L.map('map').setView([places[0].latitude, places[0].longitude], 12);
@@ -123,20 +158,33 @@ async function loadPlaces(slug,name) {
       attribution: '© OpenStreetMap'
     }).addTo(currentMap);
     places.forEach(p=>{
+      const routeUrl = `https://yandex.ru/maps/?rtext=~${p.latitude},${p.longitude}&z=15`;
       L.marker([p.latitude,p.longitude]).addTo(currentMap)
-        .bindPopup(p.name);
+        .bindPopup(`<b>${p.name}</b><br><a href="${routeUrl}" target="_blank">Построить маршрут</a>`);
     });
   },50);
 }
 
-// ---------- Страница площадки ----------
+// ---------- Детали площадки ----------
 async function loadPlace(id) {
   showLoading();
   const res = await fetch(`${API_BASE}/places/${id}/`);
   const p = await res.json();
+
   let html = `<h2>${p.name}</h2>${backButton('()=>loadPlaces(currentCategory.slug,currentCategory.name)')}`;
-  html += `<p style="text-align:center">${p.description || ''}</p>`;
-  if (p.first_photo) html += `<img class="place-photo" src="${p.first_photo}" alt="${p.name}">`;
+  if (p.description) html += `<p style="text-align:center">${p.description}</p>`;
+
+  // Горизонтальная лента фото
+  if (p.photos && p.photos.length) {
+    html += `<div class="photo-strip">`;
+    p.photos.forEach(ph=>{
+      html += `<img src="${ph}" onclick="showFullscreen('${ph}')">`;
+    });
+    html += `</div>`;
+  } else if (p.first_photo) {
+    html += `<img class="place-photo" src="${p.first_photo}">`;
+  }
+
   html += `<div id="map"></div>`;
   app.innerHTML = html;
 
@@ -146,9 +194,18 @@ async function loadPlace(id) {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap'
     }).addTo(currentMap);
+    const routeUrl = `https://yandex.ru/maps/?rtext=~${p.latitude},${p.longitude}&z=15`;
     L.marker([p.latitude,p.longitude]).addTo(currentMap)
-      .bindPopup(p.name).openPopup();
+      .bindPopup(`<b>${p.name}</b><br><a href="${routeUrl}" target="_blank">Построить маршрут</a>`).openPopup();
   },50);
+}
+
+// ---------- Полноэкранное фото ----------
+function showFullscreen(src){
+  const overlay = document.createElement('div');
+  overlay.className = 'fullscreen-overlay';
+  overlay.innerHTML = `<img src="${src}" onclick="document.body.removeChild(this.parentNode)">`;
+  document.body.appendChild(overlay);
 }
 
 // старт
