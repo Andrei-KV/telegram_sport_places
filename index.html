@@ -5,10 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Спортивные площадки — MiniApp</title>
 
-<!-- Telegram WebApp SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-<!-- Leaflet (карты) -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
@@ -17,29 +14,40 @@
   --bg: var(--tg-theme-bg-color,#ffffff);
   --text: var(--tg-theme-text-color,#000000);
   --hint: var(--tg-theme-hint-color,#666666);
-  --card-light-bg: rgba(255,0,0,0.3);
-  --card-dark-bg: rgba(255,255,255,0.3);
+  --card-light-bg: rgba(0,0,0,0.05);
+  --card-dark-bg: rgba(255,255,255,0.06);
+  --card-border: rgba(255,255,255,0.3); /* граница карточек для тёмной темы */
   --accent: var(--tg-theme-button-color,#1976d2);
 }
-html,body{height:100%; margin:0; padding:0; background:var(--bg); color:var(--text); font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;}
+
+html,body{height:100%; margin:0; padding:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;}
 header { padding:10px 12px; text-align:center; position:sticky; top:0; background:transparent; z-index:10; }
 h1 { margin:6px 0; font-size:18px; }
 .grid { display:grid; gap:10px; padding:10px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
-.card { border-radius:12px; padding:8px; cursor:pointer; user-select:none; transition:transform .12s; color:var(--text); display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:110px; text-align:center; box-shadow: 0 1px 0 rgba(0,0,0,0.03); }
+
+.card {
+  border-radius:12px;
+  padding:8px;
+  cursor:pointer;
+  user-select:none;
+  transition:transform .12s;
+  color: var(--text);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  min-height:110px;
+  text-align:center;
+  background: var(--card-dark-bg);
+  border: 1px solid var(--card-border);
+}
 .card:active{ transform: translateY(1px); }
-body.light .card {
-    background: var(--card-light-bg);
-    border: 1px solid rgba(0,0,0,0.05);
-}
-body.dark .card {
-    background: var(--card-dark-bg);       /* фон карточки */
-    border: 1px solid rgba(255,255,255,0.3); /* чёткая светлая граница */
-}
+
 .card img.thumb { width:100%; height:110px; object-fit:cover; border-radius:8px; margin-bottom:8px; }
 .category-label { font-weight:600; margin-top:6px; font-size:15px; color:var(--text); }
 .back-btn { margin: 8px 12px; padding: 8px 12px; border-radius: 8px; border: none; cursor: pointer; background: var(--accent); color: #fff; font-weight:600; }
 #map { height:300px; margin:10px; border-radius:12px; overflow:hidden; }
-.place-row { display:flex; gap:10px; align-items:center; cursor:pointer; padding:8px; border-radius:10px; }
+.place-row { display:flex; gap:10px; align-items:center; cursor:pointer; padding:8px; border-radius:10px; background: var(--card-dark-bg); border: 1px solid var(--card-border);}
 .place-row:hover { filter:brightness(0.98); }
 .place-row img { width:96px; height:72px; object-fit:cover; border-radius:8px; }
 .photo-strip { display:flex; gap:8px; padding:10px; overflow-x:auto; }
@@ -56,7 +64,6 @@ body.dark .card {
 const API_BASE = "https://sport-places-472310.ew.r.appspot.com/api/v1";
 const app = document.getElementById('app');
 const tg = window.Telegram?.WebApp || {}; try{ tg.expand(); }catch(e){}
-document.addEventListener('DOMContentLoaded', ()=>{/*noop*/});
 
 const ICONS = {
   "футбол":"⚽","баскетбол":"🏀","волейбол":"🏐","бадминтон":"🏸","каток":"⛸",
@@ -69,12 +76,11 @@ function escapeHtml(s){
 }
 
 function backButton(action){ return `<div style="padding:0 10px 6px 10px"><button class="back-btn" onclick="${action}">⬅ Назад</button></div>`; }
-
 function showError(text){ app.innerHTML = `<div style="padding:16px"><h2 style="text-align:center">Ошибка</h2><p class="muted">${escapeHtml(text)}</p></div>`; console.error(text); }
 
 let currentCategory = null;
 
-/* ============== Категории ============== */
+/* ======== Категории ======== */
 async function loadCategories(){
   app.innerHTML = `<h1 style="text-align:center">Загрузка категорий…</h1>`;
   try{
@@ -98,7 +104,7 @@ async function loadCategories(){
   } catch(err){ showError('Не удалось загрузить категории: ' + err.message); }
 }
 
-/* ============== Список площадок ============== */
+/* ======== Список площадок ======== */
 async function loadPlaces(categorySlug, categoryName){
   currentCategory = {slug: categorySlug, name: categoryName};
   app.innerHTML = `<h1 style="text-align:center">Загрузка площадок…</h1>`;
@@ -106,6 +112,7 @@ async function loadPlaces(categorySlug, categoryName){
     const r = await fetch(`${API_BASE}/categories/${encodeURIComponent(categorySlug)}/places/`);
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const places = await r.json();
+
     let html = `<header><h1>${escapeHtml(categoryName)}</h1></header>`;
     html += backButton('loadCategories()');
     if(!places.length){ html += `<p class="muted">Площадок пока нет в этой категории.</p>`; app.innerHTML = html; return; }
@@ -113,13 +120,12 @@ async function loadPlaces(categorySlug, categoryName){
     html += `<div style="padding:8px">`;
     for(const p of places){
       const thumb = p.first_photo || '';
-      const district = p.district || 'Неизвестно';
       html += `<div class="place-row card" onclick="loadPlace(${Number(p.id)})">
         ${thumb ? `<img src="${escapeHtml(thumb)}" alt="${escapeHtml(p.name)}">` 
                 : `<div style="width:96px;height:72px;border-radius:8px;background:rgba(0,0,0,0.04);display:flex;align-items:center;justify-content:center">📍</div>`}
         <div style="flex:1">
           <div style="font-weight:600">${escapeHtml(p.name)}</div>
-          <div style="font-size:13px;color:var(--hint)">${escapeHtml(district)}</div>
+          <div style="font-size:13px;color:var(--hint)" id="district-${p.id}">Загрузка района…</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--hint)">
             <span id="coords-${p.id}">${p.latitude}, ${p.longitude}</span>
             <button style="font-size:12px;padding:2px 6px;border-radius:4px;cursor:pointer;"
@@ -127,6 +133,16 @@ async function loadPlaces(categorySlug, categoryName){
           </div>
         </div>
       </div>`;
+
+      // Автоматическое получение района по координатам через Nominatim
+      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${p.latitude}&lon=${p.longitude}&format=json&zoom=10&accept-language=ru`)
+        .then(res=>res.json())
+        .then(data=>{
+          let district = data.address.suburb || data.address.city_district || data.address.town || data.address.village || 'Неизвестно';
+          const el = document.getElementById(`district-${p.id}`);
+          if(el) el.textContent = district;
+        })
+        .catch(()=>{ const el = document.getElementById(`district-${p.id}`); if(el) el.textContent = 'Неизвестно'; });
     }
     html += `</div><div id="map"></div>`;
     app.innerHTML = html;
@@ -150,7 +166,7 @@ async function loadPlaces(categorySlug, categoryName){
   }catch(err){ showError('Не удалось загрузить площадки: ' + err.message); }
 }
 
-/* ============== Детали площадки ============== */
+/* ======== Детали площадки ======== */
 async function loadPlace(id){
   app.innerHTML = `<h1 style="text-align:center">Загрузка места…</h1>`;
   try{
@@ -185,14 +201,14 @@ async function loadPlace(id){
   }catch(err){ showError('Не удалось загрузить данные места: '+err.message); }
 }
 
-/* ============== Копирование координат ============== */
+/* ======== Копирование координат ======== */
 function copyCoords(text){
   navigator.clipboard.writeText(text)
     .then(()=>alert('Координаты скопированы в буфер обмена!'))
     .catch(()=>alert('Не удалось скопировать координаты'));
 }
 
-/* полноэкранное фото */
+/* ======== Полноэкранное фото ======== */
 function showFullscreen(encodedSrc){
   const src = decodeURIComponent(encodedSrc);
   const overlay = document.createElement('div');
@@ -202,7 +218,7 @@ function showFullscreen(encodedSrc){
   document.body.appendChild(overlay);
 }
 
-/* старт */
+/* ======== Старт ======== */
 loadCategories();
 </script>
 </body>
