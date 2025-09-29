@@ -16,7 +16,7 @@
   --hint: var(--tg-theme-hint-color,#666666);
   --card-light-bg: rgba(0,0,0,0.05);
   --card-dark-bg: rgba(255,255,255,0.06);
-  --card-border: rgba(255,255,255,0.3); /* граница карточек для тёмной темы */
+  --card-border: rgba(255,255,255,0.3);
   --accent: var(--tg-theme-button-color,#1976d2);
 }
 
@@ -70,6 +70,8 @@ const ICONS = {
   "теннис":"🎾","лыжи":"🎿","сноуборд":"🏂","воркаут":"💪","экстрим":"🤸","default":"🏟️"
 };
 
+const districtCache = {}; // кэш районов
+
 function escapeHtml(s){
   if(!s && s!==0) return '';
   return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#039;"})[m]);
@@ -79,6 +81,23 @@ function backButton(action){ return `<div style="padding:0 10px 6px 10px"><butto
 function showError(text){ app.innerHTML = `<div style="padding:16px"><h2 style="text-align:center">Ошибка</h2><p class="muted">${escapeHtml(text)}</p></div>`; console.error(text); }
 
 let currentCategory = null;
+
+/* ======== Функция для получения района с кэшем ======== */
+async function getDistrict(lat, lon){
+  const key = `${lat},${lon}`;
+  if(districtCache[key]) return districtCache[key];
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10&accept-language=ru`);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    const district = data.address.suburb || data.address.city_district || data.address.town || data.address.village || 'Неизвестно';
+    districtCache[key] = district;
+    return district;
+  } catch(e){
+    districtCache[key] = 'Неизвестно';
+    return 'Неизвестно';
+  }
+}
 
 /* ======== Категории ======== */
 async function loadCategories(){
@@ -134,20 +153,16 @@ async function loadPlaces(categorySlug, categoryName){
         </div>
       </div>`;
 
-      // Автоматическое получение района по координатам через Nominatim
-      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${p.latitude}&lon=${p.longitude}&format=json&zoom=10&accept-language=ru`)
-        .then(res=>res.json())
-        .then(data=>{
-          let district = data.address.suburb || data.address.city_district || data.address.town || data.address.village || 'Неизвестно';
-          const el = document.getElementById(`district-${p.id}`);
-          if(el) el.textContent = district;
-        })
-        .catch(()=>{ const el = document.getElementById(`district-${p.id}`); if(el) el.textContent = 'Неизвестно'; });
+      // асинхронно обновляем район с кэшем
+      getDistrict(p.latitude,p.longitude).then(d=>{
+        const el = document.getElementById(`district-${p.id}`);
+        if(el) el.textContent = d;
+      });
     }
     html += `</div><div id="map"></div>`;
     app.innerHTML = html;
 
-    // Leaflet карта
+    // карта
     setTimeout(()=>{
       try{
         if(window._currentMap){ window._currentMap.remove(); window._currentMap=null; }
