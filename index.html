@@ -15,13 +15,18 @@
   --text: var(--tg-theme-text-color,#000000);
   --hint: var(--tg-theme-hint-color,#666666);
   --card-light-bg: rgba(0,0,0,0.05);
-  --card-dark-bg: rgba(255,255,255,0.06);
-  --card-border: rgba(255,255,255,0.3);
+  --card-dark-bg: rgba(44,62,80,0.06);
+  --card-border: rgba(236,240,241,0.3);
   --accent: var(--tg-theme-button-color,#1976d2);
 }
 
 html,body{height:100%; margin:0; padding:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;}
-header { padding:10px 12px; text-align:center; position:sticky; top:0; background:transparent; z-index:10; }
+header {
+  padding: 10px 12px;
+  text-align: center;
+  background: transparent;
+  z-index: 10;
+}
 h1 { margin:6px 0; font-size:18px; }
 .grid { display:grid; gap:10px; padding:10px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 
@@ -70,8 +75,6 @@ const ICONS = {
   "теннис":"🎾","лыжи":"🎿","сноуборд":"🏂","воркаут":"💪","экстрим":"🤸","default":"🏟️"
 };
 
-const districtCache = {}; // кэш районов
-
 function escapeHtml(s){
   if(!s && s!==0) return '';
   return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#039;"})[m]);
@@ -82,22 +85,6 @@ function showError(text){ app.innerHTML = `<div style="padding:16px"><h2 style="
 
 let currentCategory = null;
 
-/* ======== Функция для получения района с кэшем ======== */
-async function getDistrict(lat, lon){
-  const key = `${lat},${lon}`;
-  if(districtCache[key]) return districtCache[key];
-  try{
-    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10&accept-language=ru`);
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const data = await res.json();
-    const district = data.address.suburb || data.address.city_district || data.address.town || data.address.village || 'Неизвестно';
-    districtCache[key] = district;
-    return district;
-  } catch(e){
-    districtCache[key] = 'Неизвестно';
-    return 'Неизвестно';
-  }
-}
 
 /* ======== Категории ======== */
 async function loadCategories(){
@@ -144,7 +131,6 @@ async function loadPlaces(categorySlug, categoryName){
                 : `<div style="width:96px;height:72px;border-radius:8px;background:rgba(0,0,0,0.04);display:flex;align-items:center;justify-content:center">📍</div>`}
         <div style="flex:1">
           <div style="font-weight:600">${escapeHtml(p.name)}</div>
-          <div style="font-size:13px;color:var(--hint)" id="district-${p.id}">Загрузка района…</div>
           <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--hint)">
             <span id="coords-${p.id}">${p.latitude}, ${p.longitude}</span>
             <button style="font-size:12px;padding:2px 6px;border-radius:4px;cursor:pointer;"
@@ -152,11 +138,6 @@ async function loadPlaces(categorySlug, categoryName){
           </div>
         </div>
       </div>`;
-
-      // асинхронно обновляем район с кэшем
-      getDistrict(p.latitude,p.longitude).then(d=>{
-        const el = document.getElementById(`district-${p.id}`);
-        if(el) el.textContent = d;
       });
     }
     html += `</div><div id="map"></div>`;
