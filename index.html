@@ -27,8 +27,14 @@ h1 { margin:6px 0; font-size:18px; }
 .grid { display:grid; gap:10px; padding:10px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 .card { border-radius:12px; padding:8px; cursor:pointer; user-select:none; transition:transform .12s; color:var(--text); display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:110px; text-align:center; box-shadow: 0 1px 0 rgba(0,0,0,0.03); }
 .card:active{ transform: translateY(1px); }
-body.light .card { background: var(--card-light-bg); }
-body.dark  .card { background: var(--card-dark-bg); }
+body.light .card {
+    background: var(--card-light-bg);
+    border: 1px solid rgba(0,0,0,0.05);
+}
+body.dark .card {
+    background: var(--card-dark-bg);
+    border: 1px solid rgba(255,255,255,0.1); /* тонкая светлая рамка */
+}
 .card img.thumb { width:100%; height:110px; object-fit:cover; border-radius:8px; margin-bottom:8px; }
 .category-label { font-weight:600; margin-top:6px; font-size:15px; color:var(--text); }
 .back-btn { margin: 8px 12px; padding: 8px 12px; border-radius: 8px; border: none; cursor: pointer; background: var(--accent); color: #fff; font-weight:600; }
