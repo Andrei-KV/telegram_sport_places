@@ -1,214 +1,273 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Спортивные площадки</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Спортивные площадки — MiniApp</title>
 
-<!-- Telegram SDK -->
+<!-- Telegram WebApp SDK -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-<!-- Leaflet -->
+<!-- Leaflet (карты) -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <style>
-  body {
-    margin: 0; padding: 0;
-    background: var(--tg-theme-bg-color, #fff);
-    color: var(--tg-theme-text-color, #000);
-    font-family: sans-serif;
+  :root{
+    --bg: var(--tg-theme-bg-color,#ffffff);
+    --text: var(--tg-theme-text-color,#000000);
+    --hint: var(--tg-theme-hint-color,#666666);
+    --card-light-bg: rgba(0,0,0,0.05);
+    --card-dark-bg: rgba(255,255,255,0.06);
+    --accent: var(--tg-theme-button-color,#1976d2);
   }
-  h1,h2 { text-align: center; }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit,minmax(150px,1fr));
-    gap: 10px;
-    padding: 10px;
-  }
+
+  html,body{height:100%; margin:0; padding:0; background:var(--bg); color:var(--text); font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;}
+
+  header { padding:10px 12px; text-align:center; position:sticky; top:0; background:transparent; z-index:10; }
+  h1 { margin:6px 0; font-size:18px; }
+  .grid { display:grid; gap:10px; padding:10px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
   .card {
-    background: rgba(0,0,0,0.05);
-    border-radius: 12px;
-    padding: 8px;
-    text-align: center;
-    cursor: pointer;
-    transition: 0.2s;
-    color: var(--tg-theme-text-color, #000);
+    border-radius:12px;
+    padding:8px;
+    cursor:pointer;
+    user-select:none;
+    transition:transform .12s;
+    color:var(--text);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    min-height:110px;
+    text-align:center;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.03);
   }
-  .card:hover { background: rgba(0,0,0,0.1); }
+  .card:active{ transform: translateY(1px); }
+
+  /* светлая/тёмная тема на карточках */
+  body.light .card { background: var(--card-light-bg); }
+  body.dark  .card { background: var(--card-dark-bg); }
+
+  .card img.thumb { width:100%; height:110px; object-fit:cover; border-radius:8px; margin-bottom:8px; }
+
+  .category-label { font-weight:600; margin-top:6px; font-size:15px; color:var(--text); }
+
   .back-btn {
-    margin: 10px;
+    margin: 8px 12px;
     padding: 8px 12px;
-    border: none;
-    background: #1976d2;
-    color: #fff;
     border-radius: 8px;
+    border: none;
     cursor: pointer;
-  }
-  #map { height: 300px; margin: 10px; border-radius: 12px; }
-  img.place-photo { max-width: 95%; display:block; margin: 10px auto; border-radius:12px; }
-
-  /* горизонтальная лента фото */
-  .photo-strip {
-    display: flex;
-    overflow-x: auto;
-    gap: 8px;
-    padding: 10px;
-  }
-  .photo-strip img {
-    height: 120px;
-    border-radius: 10px;
-    cursor: pointer;
+    background: var(--accent);
+    color: #fff;
+    font-weight:600;
   }
 
-  /* полноэкранный просмотр */
+  #map { height:300px; margin:10px; border-radius:12px; overflow:hidden; }
+
+  .place-row { display:flex; gap:10px; align-items:center; cursor:pointer; padding:8px; border-radius:10px; }
+  .place-row:hover { filter:brightness(0.98); }
+  .place-row img { width:96px; height:72px; object-fit:cover; border-radius:8px; }
+
+  .photo-strip { display:flex; gap:8px; padding:10px; overflow-x:auto; }
+  .photo-strip img { height:110px; border-radius:10px; cursor:pointer; object-fit:cover; }
+
+  /* fullscreen overlay */
   .fullscreen-overlay {
-    position: fixed;
-    top:0; left:0; right:0; bottom:0;
-    background: rgba(0,0,0,0.9);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    background: rgba(0,0,0,0.9); z-index:9999;
   }
-  .fullscreen-overlay img {
-    max-width: 90%;
-    max-height: 90%;
-  }
+  .fullscreen-overlay img { max-width:94%; max-height:94%; border-radius:8px; }
+
+  .muted { color:var(--hint); font-size:14px; text-align:center; padding:8px; }
 </style>
 </head>
 <body>
-
-<div id="app"><h1>Загрузка...</h1></div>
+  <div id="app"><h1 style="text-align:center">Загрузка...</h1></div>
 
 <script>
-const tg = window.Telegram.WebApp;
-tg.expand();
-
+/* ============== Настройки ============== */
 const API_BASE = "https://sport-places-472310.ew.r.appspot.com/api/v1";
 const app = document.getElementById('app');
-let currentCategory = null;
-let currentMap = null;
+const tg = window.Telegram?.WebApp || {}; try{ tg.expand(); }catch(e){}
+document.addEventListener('DOMContentLoaded', ()=>{/*noop*/});
 
-// Иконки категорий (пример)
+/* Установка светлой/тёмной темы (чтобы карточки были читаемы) */
+try {
+  const scheme = (tg.colorScheme || 'light'); // 'dark' или 'light'
+  document.body.classList.add(scheme);
+} catch(e){ document.body.classList.add('light'); }
+
+/* Небольшая таблица иконок (можно расширить) */
 const ICONS = {
   "футбол":"⚽","баскетбол":"🏀","волейбол":"🏐","бадминтон":"🏸","каток":"⛸",
-  "теннис":"🎾","лыжи":"🎿","сноуборд":"🏂","воркаут":"💪","экстрим":"🤸"
+  "теннис":"🎾","лыжи":"🎿","сноуборд":"🏂","воркаут":"💪","экстрим":"🤸","default":"🏟️"
 };
 
-function showLoading(text="Загрузка...") {
-  app.innerHTML = `<h1>${text}</h1>`;
+/* escape to avoid XSS when inserting names in innerHTML */
+function escapeHtml(s){
+  if(!s && s!==0) return '';
+  return String(s).replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#039;"})[m]; });
 }
 
-function backButton(cb) {
-  return `<button class="back-btn" onclick="(${cb})()">⬅ Назад</button>`;
+/* кнопка назад (action - JS-выражение в строке, например "loadCategories()") */
+function backButton(action){
+  return `<div style="padding:0 10px 6px 10px"><button class="back-btn" onclick="${action}">⬅ Назад</button></div>`;
 }
 
-// ---------- Категории ----------
-async function loadCategories() {
-  showLoading();
-  const res = await fetch(`${API_BASE}/categories/`);
-  const data = await res.json();
-  data.sort((a,b)=>a.name.localeCompare(b.name,'ru'));
-  let html = `<h1>Категории</h1><div class="grid">`;
-  data.forEach(c=>{
-    const icon = Object.entries(ICONS).find(([k])=>c.name.toLowerCase().includes(k))?.[1] || "🏟️";
-    html += `<div class="card" onclick="loadPlaces('${c.slug}','${c.name}')">${icon}<br>${c.name}</div>`;
-  });
-  html += "</div>";
-  app.innerHTML = html;
+/* Показываем ошибку */
+function showError(text){
+  app.innerHTML = `<div style="padding:16px"><h2 style="text-align:center">Ошибка</h2><p class="muted">${escapeHtml(text)}</p></div>`;
+  console.error(text);
 }
 
-// ---------- Список площадок ----------
-async function loadPlaces(slug,name) {
-  currentCategory = {slug,name};
-  showLoading();
-  const res = await fetch(`${API_BASE}/categories/${slug}/places/`);
-  const places = await res.json();
+/* ============== Категории ============== */
+async function loadCategories(){
+  app.innerHTML = `<h1 style="text-align:center">Загрузка категорий…</h1>`;
+  try{
+    const r = await fetch(`${API_BASE}/categories/`);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const categories = await r.json();
+    categories.sort((a,b)=>a.name.localeCompare(b.name,'ru')); // сортировка по алфавиту
 
-  let html = `<h2>${name}</h2>${backButton('loadCategories')}`;
-  if (!places.length) {
-    html += `<p style="text-align:center">Площадок пока нет</p>`;
-    app.innerHTML = html;
-    return;
-  }
-
-  html += `<div class="grid">`;
-  for (const p of places) {
-    // Запросить детально для фото
-    let firstPhoto = "";
-    try {
-      const r = await fetch(`${API_BASE}/places/${p.id}/`);
-      const d = await r.json();
-      firstPhoto = d.first_photo || "";
-    } catch {}
-    html += `<div class="card" onclick="loadPlace(${p.id})">
-      ${firstPhoto ? `<img src="${firstPhoto}" style="width:100%;border-radius:8px;margin-bottom:6px">` : ""}
-      📍 ${p.name}
-    </div>`;
-  }
-  html += `</div><div id="map"></div>`;
-  app.innerHTML = html;
-
-  // карта с маркерами
-  setTimeout(()=>{
-    if (currentMap) currentMap.remove();
-    currentMap = L.map('map').setView([places[0].latitude, places[0].longitude], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap'
-    }).addTo(currentMap);
-    places.forEach(p=>{
-      const routeUrl = `https://yandex.ru/maps/?rtext=~${p.latitude},${p.longitude}&z=15`;
-      L.marker([p.latitude,p.longitude]).addTo(currentMap)
-        .bindPopup(`<b>${p.name}</b><br><a href="${routeUrl}" target="_blank">Построить маршрут</a>`);
-    });
-  },50);
-}
-
-// ---------- Детали площадки ----------
-async function loadPlace(id) {
-  showLoading();
-  const res = await fetch(`${API_BASE}/places/${id}/`);
-  const p = await res.json();
-
-  let html = `<h2>${p.name}</h2>${backButton('()=>loadPlaces(currentCategory.slug,currentCategory.name)')}`;
-  if (p.description) html += `<p style="text-align:center">${p.description}</p>`;
-
-  // Горизонтальная лента фото
-  if (p.photos && p.photos.length) {
-    html += `<div class="photo-strip">`;
-    p.photos.forEach(ph=>{
-      html += `<img src="${ph}" onclick="showFullscreen('${ph}')">`;
-    });
+    let html = `<header><h1>Категории</h1></header>`;
+    html += `<div class="grid">`;
+    for(const c of categories){
+      // подбираем иконку по имени (простой поиск в ключах ICONS)
+      const low = (c.name || '').toLowerCase();
+      let icon = ICONS['default'];
+      for(const k of Object.keys(ICONS)){
+        if(k==='default') continue;
+        if(low.includes(k)) { icon = ICONS[k]; break; }
+      }
+      html += `<div class="card" onclick="loadPlaces('${escapeHtml(c.slug)}','${escapeHtml(c.name)}')">
+                 <div style="font-size:32px">${icon}</div>
+                 <div class="category-label">${escapeHtml(c.name)}</div>
+                 <div style="font-size:13px;color:var(--hint)">${c.place_count ?? 0} площадок</div>
+               </div>`;
+    }
     html += `</div>`;
-  } else if (p.first_photo) {
-    html += `<img class="place-photo" src="${p.first_photo}">`;
+    app.innerHTML = html;
+  } catch(err){
+    showError('Не удалось загрузить категории: ' + err.message);
   }
-
-  html += `<div id="map"></div>`;
-  app.innerHTML = html;
-
-  setTimeout(()=>{
-    if (currentMap) currentMap.remove();
-    currentMap = L.map('map').setView([p.latitude, p.longitude], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap'
-    }).addTo(currentMap);
-    const routeUrl = `https://yandex.ru/maps/?rtext=~${p.latitude},${p.longitude}&z=15`;
-    L.marker([p.latitude,p.longitude]).addTo(currentMap)
-      .bindPopup(`<b>${p.name}</b><br><a href="${routeUrl}" target="_blank">Построить маршрут</a>`).openPopup();
-  },50);
 }
 
-// ---------- Полноэкранное фото ----------
-function showFullscreen(src){
+/* ============== Список площадок для категории ============== */
+async function loadPlaces(categorySlug, categoryName){
+  currentCategory = {slug: categorySlug, name: categoryName};
+  app.innerHTML = `<h1 style="text-align:center">Загрузка площадок…</h1>`;
+  try{
+    const r = await fetch(`${API_BASE}/categories/${encodeURIComponent(categorySlug)}/places/`);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const places = await r.json();
+
+    let html = `<header><h1>${escapeHtml(categoryName)}</h1></header>`;
+    html += backButton('loadCategories()');
+
+    if(!places.length){
+      html += `<p class="muted">Площадок пока нет в этой категории.</p>`;
+      app.innerHTML = html;
+      return;
+    }
+
+    // список карточек
+    html += `<div style="padding:8px">`;
+    for(const p of places){
+      const thumb = p.first_photo || '';
+      html += `<div class="place-row card" onclick="loadPlace(${Number(p.id)})">
+                 ${thumb ? `<img src="${escapeHtml(thumb)}" alt="${escapeHtml(p.name)}">`
+                        : `<div style="width:96px;height:72px;border-radius:8px;background:rgba(0,0,0,0.04);display:flex;align-items:center;justify-content:center">📍</div>`}
+                 <div style="flex:1">
+                   <div style="font-weight:600">${escapeHtml(p.name)}</div>
+                   <div style="font-size:13px;color:var(--hint)">${p.latitude}, ${p.longitude}</div>
+                 </div>
+               </div>`;
+    }
+    html += `</div>`;
+    // карта
+    html += `<div id="map"></div>`;
+    app.innerHTML = html;
+
+    // инициализация Leaflet
+    setTimeout(()=>{
+      try {
+        if(window._currentMap) { window._currentMap.remove(); window._currentMap = null; }
+        const lat = parseFloat(places[0].latitude), lon = parseFloat(places[0].longitude);
+        const map = window._currentMap = L.map('map', {zoomControl:true, attributionControl:true}).setView([lat, lon], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution: '© OpenStreetMap' }).addTo(map);
+
+        for(const p of places){
+          const plat = parseFloat(p.latitude), plon = parseFloat(p.longitude);
+          if(Number.isNaN(plat) || Number.isNaN(plon)) continue;
+          const routeUrl = `https://yandex.ru/maps/?rtext=~${plat},${plon}&z=15`;
+          L.marker([plat,plon]).addTo(map)
+            .bindPopup(`<b>${escapeHtml(p.name)}</b><br><a href="${routeUrl}" target="_blank" rel="noreferrer">Построить маршрут</a>`);
+        }
+      } catch(e){ console.error(e); }
+    }, 80);
+
+  } catch(err){
+    showError('Не удалось загрузить площадки: ' + err.message);
+  }
+}
+
+/* ============== Детали площадки ============== */
+async function loadPlace(id){
+  app.innerHTML = `<h1 style="text-align:center">Загрузка места…</h1>`;
+  try{
+    const r = await fetch(`${API_BASE}/places/${Number(id)}/`);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const p = await r.json();
+
+    let html = `<header><h1>${escapeHtml(p.name)}</h1></header>`;
+    html += backButton(`loadPlaces('${escapeHtml(currentCategory.slug)}','${escapeHtml(currentCategory.name)}')`);
+
+    if(p.description) html += `<div style="padding:0 12px 8px 12px"><p style="margin:0">${escapeHtml(p.description)}</p></div>`;
+
+    // фото (используем поле photos из PlaceDetailSerializer)
+    if(Array.isArray(p.photos) && p.photos.length){
+      html += `<div class="photo-strip">`;
+      for(const ph of p.photos){
+        html += `<img src="${escapeHtml(ph)}" onclick="showFullscreen('${encodeURIComponent(ph)}')" />`;
+      }
+      html += `</div>`;
+    } else if (p.first_photo) {
+      html += `<div style="padding:10px"><img src="${escapeHtml(p.first_photo)}" style="width:100%;border-radius:10px"></div>`;
+    }
+
+    html += `<div id="map"></div>`;
+    app.innerHTML = html;
+
+    // карта с одним маркером
+    setTimeout(()=>{
+      try {
+        if(window._currentMap) { window._currentMap.remove(); window._currentMap = null; }
+        const lat = parseFloat(p.latitude), lon = parseFloat(p.longitude);
+        const map = window._currentMap = L.map('map', {zoomControl:true, attributionControl:true}).setView([lat, lon], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution: '© OpenStreetMap' }).addTo(map);
+        const routeUrl = `https://yandex.ru/maps/?rtext=~${lat},${lon}&z=15`;
+        L.marker([lat, lon]).addTo(map).bindPopup(`<b>${escapeHtml(p.name)}</b><br><a href="${routeUrl}" target="_blank" rel="noreferrer">Построить маршрут</a>`).openPopup();
+      } catch(e){ console.error(e); }
+    }, 80);
+
+  } catch(err){
+    showError('Не удалось загрузить данные места: ' + err.message);
+  }
+}
+
+/* полноэкранный просмотр */
+function showFullscreen(encodedSrc){
+  const src = decodeURIComponent(encodedSrc);
   const overlay = document.createElement('div');
   overlay.className = 'fullscreen-overlay';
-  overlay.innerHTML = `<img src="${src}" onclick="document.body.removeChild(this.parentNode)">`;
+  overlay.innerHTML = `<img src="${escapeHtml(src)}" alt="Фото" />`;
+  overlay.addEventListener('click', ()=>document.body.removeChild(overlay));
   document.body.appendChild(overlay);
 }
 
-// старт
+/* стартовая загрузка */
+let currentCategory = null;
 loadCategories();
 </script>
 </body>
