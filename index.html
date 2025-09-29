@@ -1,150 +1,158 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Каталог площадок</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 15px;
-            background-color: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #000000);
-        }
-        #app {
-            max-width: 100%;
-        }
-        h1 {
-            font-size: 24px;
-            margin-bottom: 20px;
-        }
-        .category-list, .place-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        .category-item, .place-item {
-            padding: 15px 10px;
-            border-bottom: 1px solid var(--tg-theme-secondary-bg-color, #f0f0f0);
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .category-item:hover, .place-item:hover {
-            background-color: var(--tg-theme-secondary-bg-color, #f8f8f8);
-        }
-        .place-item h3 {
-            margin: 0 0 5px 0;
-            font-size: 18px;
-        }
-        .place-item p {
-            margin: 0;
-            font-size: 14px;
-            color: var(--tg-theme-hint-color, #888888);
-        }
-        .back-button {
-            display: none;
-            margin-bottom: 15px;
-            padding: 10px 15px;
-            border: none;
-            background-color: var(--tg-theme-button-color, #007bff);
-            color: var(--tg-theme-button-text-color, #ffffff);
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Спортивные площадки</title>
+
+<!-- Telegram WebApp SDK -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<!-- Leaflet для карт -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<style>
+  body {
+    margin: 0; padding: 0;
+    background: var(--tg-theme-bg-color, #fff);
+    color: var(--tg-theme-text-color, #000);
+    font-family: sans-serif;
+  }
+  h1,h2 { text-align: center; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit,minmax(120px,1fr));
+    gap: 10px;
+    padding: 10px;
+  }
+  .card {
+    background: #f0f0f0;
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .card:hover { background: #e0e0e0; }
+  .back-btn {
+    margin: 10px;
+    padding: 8px 12px;
+    border: none;
+    background: #1976d2;
+    color: #fff;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  #map { height: 300px; margin: 10px; border-radius: 12px; }
+  img.place-photo { max-width: 95%; display:block; margin: 10px auto; border-radius:12px; }
+</style>
 </head>
 <body>
 
-    <button id="back-to-categories" class="back-button">Назад к категориям</button>
-    <div id="app">
-        <h1>Категории</h1>
-        <ul id="categories" class="category-list"></ul>
-        <ul id="places" class="place-list" style="display: none;"></ul>
-    </div>
-    <div id="loading" style="display: none; text-align: center; padding: 20px;">Загрузка...</div>
+<div id="app">
+  <h1>Загрузка...</h1>
+</div>
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.ready();
+<script>
+const tg = window.Telegram.WebApp;
+tg.expand();
 
-        const apiBaseUrl = '/api/v1';
-        const app = document.getElementById('app');
-        const categoriesList = document.getElementById('categories');
-        const placesList = document.getElementById('places');
-        const backButton = document.getElementById('back-to-categories');
-        const loadingIndicator = document.getElementById('loading');
-        const title = document.querySelector('h1');
+const API_BASE = "https://sport-places-472310.ew.r.appspot.com/api/v1";
+const app = document.getElementById('app');
+let currentCategory = null;
+let currentMap = null;
 
-        async function fetchCategories() {
-            showLoading(true);
-            try {
-                const response = await fetch(`${apiBaseUrl}/categories/`);
-                const categories = await response.json();
-                categoriesList.innerHTML = '';
-                categories.forEach(category => {
-                    const li = document.createElement('li');
-                    li.textContent = category.name;
-                    li.className = 'category-item';
-                    li.onclick = () => fetchPlaces(category.slug);
-                    categoriesList.appendChild(li);
-                });
-            } catch (error) {
-                console.error('Ошибка при загрузке категорий:', error);
-                app.innerHTML = '<p>Не удалось загрузить категории. Попробуйте позже.</p>';
-            } finally {
-                showLoading(false);
-            }
-        }
+// --- Иконки для категорий (пример, можно заменить картинками/emoji) ---
+const ICONS = {
+  "футбол":"⚽","баскетбол":"🏀","волейбол":"🏐","бадминтон":"🏸","каток":"⛸",
+  "теннис":"🎾","лыжи":"🎿","сноуборд":"🏂","воркаут":"💪","экстрим":"🤸"
+};
 
-        async function fetchPlaces(categorySlug) {
-            showLoading(true);
-            try {
-                const response = await fetch(`${apiBaseUrl}/categories/${categorySlug}/places/`);
-                const places = await response.json();
-                placesList.innerHTML = '';
-                places.forEach(place => {
-                    const li = document.createElement('li');
-                    li.className = 'place-item';
-                    li.innerHTML = `<h3>${place.name}</h3><p>${place.address}</p>`;
-                    // Можно добавить обработчик для показа деталей
-                    li.onclick = () => tg.showAlert(\`Адрес: ${place.address}\`);
-                    placesList.appendChild(li);
-                });
-                showPlacesView(categorySlug);
-            } catch (error) {
-                console.error('Ошибка при загрузке площадок:', error);
-                app.innerHTML = '<p>Не удалось загрузить площадки. Попробуйте позже.</p>';
-            } finally {
-                showLoading(false);
-            }
-        }
+// ---------- UI ----------
+function showLoading(text="Загрузка...") {
+  app.innerHTML = `<h1>${text}</h1>`;
+}
 
-        function showCategoriesView() {
-            title.textContent = 'Категории';
-            categoriesList.style.display = 'block';
-            placesList.style.display = 'none';
-            backButton.style.display = 'none';
-        }
+function backButton(cb) {
+  return `<button class="back-btn" onclick="(${cb})()">⬅ Назад</button>`;
+}
 
-        function showPlacesView(categoryName) {
-            title.textContent = `Площадки`;
-            categoriesList.style.display = 'none';
-            placesList.style.display = 'block';
-            backButton.style.display = 'block';
-        }
-        
-        function showLoading(isLoading) {
-            loadingIndicator.style.display = isLoading ? 'block' : 'none';
-            app.style.display = isLoading ? 'none' : 'block';
-        }
+// ---------- Страница категорий ----------
+async function loadCategories() {
+  showLoading();
+  const res = await fetch(`${API_BASE}/categories/`);
+  const data = await res.json();
+  // сортировка по имени
+  data.sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+  let html = `<h1>Категории</h1><div class="grid">`;
+  data.forEach(c=>{
+    const icon = Object.entries(ICONS).find(([k])=>c.name.toLowerCase().includes(k))?.[1] || "🏟️";
+    html += `<div class="card" onclick="loadPlaces('${c.slug}','${c.name}')">${icon}<br>${c.name}</div>`;
+  });
+  html += "</div>";
+  app.innerHTML = html;
+}
 
-        backButton.onclick = showCategoriesView;
+// ---------- Список площадок + карта ----------
+async function loadPlaces(slug,name) {
+  currentCategory = {slug,name};
+  showLoading();
+  const res = await fetch(`${API_BASE}/categories/${slug}/places/`);
+  const places = await res.json();
 
-        // Initial load
-        fetchCategories();
-    </script>
+  let html = `<h2>${name}</h2>${backButton('loadCategories')}`;
+  if (places.length === 0) {
+    html += `<p style="text-align:center">Площадок пока нет</p>`;
+    app.innerHTML = html;
+    return;
+  }
+
+  html += `<div class="grid">`;
+  places.forEach(p=>{
+    html += `<div class="card" onclick="loadPlace(${p.id})">📍<br>${p.name}</div>`;
+  });
+  html += `</div><div id="map"></div>`;
+  app.innerHTML = html;
+
+  // Отрисовка карты с метками
+  setTimeout(()=>{
+    if (currentMap) currentMap.remove();
+    currentMap = L.map('map').setView([places[0].latitude, places[0].longitude], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap'
+    }).addTo(currentMap);
+    places.forEach(p=>{
+      L.marker([p.latitude,p.longitude]).addTo(currentMap)
+        .bindPopup(p.name);
+    });
+  },50);
+}
+
+// ---------- Страница площадки ----------
+async function loadPlace(id) {
+  showLoading();
+  const res = await fetch(`${API_BASE}/places/${id}/`);
+  const p = await res.json();
+  let html = `<h2>${p.name}</h2>${backButton('()=>loadPlaces(currentCategory.slug,currentCategory.name)')}`;
+  html += `<p style="text-align:center">${p.description || ''}</p>`;
+  if (p.first_photo) html += `<img class="place-photo" src="${p.first_photo}" alt="${p.name}">`;
+  html += `<div id="map"></div>`;
+  app.innerHTML = html;
+
+  setTimeout(()=>{
+    if (currentMap) currentMap.remove();
+    currentMap = L.map('map').setView([p.latitude, p.longitude], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap'
+    }).addTo(currentMap);
+    L.marker([p.latitude,p.longitude]).addTo(currentMap)
+      .bindPopup(p.name).openPopup();
+  },50);
+}
+
+// старт
+loadCategories();
+</script>
 </body>
 </html>
